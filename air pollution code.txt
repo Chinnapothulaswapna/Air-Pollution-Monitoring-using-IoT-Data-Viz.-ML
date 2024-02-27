@@ -1,0 +1,67 @@
+# Import necessary libraries
+import paho.mqtt.client as mqtt
+import json
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
+# MQTT parameters
+MQTT_BROKER = "mqtt.eclipse.org"
+MQTT_PORT = 1883
+MQTT_TOPIC = "air_pollution_data"
+
+# Initialize data storage
+timestamps = []
+pm25_values = []
+
+# Callback when a message is received from the MQTT broker
+def on_message(client, userdata, msg):
+    data = json.loads(msg.payload.decode())
+    timestamp = data["timestamp"]
+    pm25_value = data["pm25"]
+
+    timestamps.append(timestamp)
+    pm25_values.append(pm25_value)
+
+    # Data visualization (plotting)
+    plt.plot(timestamps, pm25_values, marker='o', linestyle='-')
+    plt.xlabel('Timestamp')
+    plt.ylabel('PM2.5 Value')
+    plt.title('Air Pollution Monitoring')
+    plt.xticks(rotation=45)
+    plt.show()
+
+    # Machine Learning (linear regression)
+    X = np.array(timestamps).reshape(-1, 1)
+    y = np.array(pm25_values)
+    
+    model = LinearRegression()
+    model.fit(X, y)
+    predicted_values = model.predict(X)
+
+    # Print the model's coefficients
+    print("Linear Regression Coefficients:")
+    print("Slope (m):", model.coef_[0])
+    print("Intercept (b):", model.intercept_)
+
+# Set up MQTT client
+client = mqtt.Client()
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
+
+# Set the on_message callback
+client.on_message = on_message
+
+# Subscribe to the MQTT topic
+client.subscribe(MQTT_TOPIC)
+
+# Start the MQTT loop
+client.loop_start()
+
+# Keep the script running
+try:
+    while True:
+        pass
+except KeyboardInterrupt:
+    print("Script terminated by user.")
+    client.disconnect()
+    client.loop_stop()

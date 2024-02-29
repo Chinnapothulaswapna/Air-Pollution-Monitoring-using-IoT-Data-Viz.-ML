@@ -1,67 +1,58 @@
-# Import necessary libraries
-import paho.mqtt.client as mqtt
-import json
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-import numpy as np
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <MQUnifiedsensor.h>
+#include <BlynkSimpleEsp32.h>
 
-# MQTT parameters
-MQTT_BROKER = "mqtt.eclipse.org"
-MQTT_PORT = 1883
-MQTT_TOPIC = "air_pollution_data"
+#define MQ135_PIN A0
+#define MQ6_PIN A1
+#define LED_PIN 13
 
-# Initialize data storage
-timestamps = []
-pm25_values = []
+char auth[] = "Your_Blynk_Auth_Token";
+char ssid[] = "Your_WiFi_SSID";
+char pass[] = "Your_WiFi_Password";
 
-# Callback when a message is received from the MQTT broker
-def on_message(client, userdata, msg):
-    data = json.loads(msg.payload.decode())
-    timestamp = data["timestamp"]
-    pm25_value = data["pm25"]
+MQUnifiedsensor mq135(MQ135_PIN, models::MiCS5524);
+MQUnifiedsensor mq6(MQ6_PIN, models::MiCS5524);
 
-    timestamps.append(timestamp)
-    pm25_values.append(pm25_value)
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(auth, ssid, pass);
 
-    # Data visualization (plotting)
-    plt.plot(timestamps, pm25_values, marker='o', linestyle='-')
-    plt.xlabel('Timestamp')
-    plt.ylabel('PM2.5 Value')
-    plt.title('Air Pollution Monitoring')
-    plt.xticks(rotation=45)
-    plt.show()
+  mq135.begin();
+  mq6.begin();
 
-    # Machine Learning (linear regression)
-    X = np.array(timestamps).reshape(-1, 1)
-    y = np.array(pm25_values)
-    
-    model = LinearRegression()
-    model.fit(X, y)
-    predicted_values = model.predict(X)
+  pinMode(LED_PIN, OUTPUT);
 
-    # Print the model's coefficients
-    print("Linear Regression Coefficients:")
-    print("Slope (m):", model.coef_[0])
-    print("Intercept (b):", model.intercept_)
+  Blynk.virtualWrite(V5, "Air Quality Monitoring");
+}
 
-# Set up MQTT client
-client = mqtt.Client()
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
+void loop() {
+  Blynk.run();
 
-# Set the on_message callback
-client.on_message = on_message
+  float ppmMQ135 = mq135.readSensor();
+  float ppmMQ6 = mq6.readSensor();
 
-# Subscribe to the MQTT topic
-client.subscribe(MQTT_TOPIC)
+  Serial.print("MQ135 PPM: ");
+  Serial.println(ppmMQ135);
+  Serial.print("MQ6 PPM: ");
+  Serial.println(ppmMQ6);
 
-# Start the MQTT loop
-client.loop_start()
+  Blynk.virtualWrite(V0, ppmMQ135);
+  Blynk.virtualWrite(V1, ppmMQ6);
 
-# Keep the script running
-try:
-    while True:
-        pass
-except KeyboardInterrupt:
-    print("Script terminated by user.")
-    client.disconnect()
-    client.loop_stop()
+  checkAirQuality(ppmMQ135, ppmMQ6);
+
+  delay(5000); // Delay for 5 seconds between readings
+}
+
+void checkAirQuality(float ppmMQ135, float ppmMQ6) {
+  if (ppmMQ135 > 1000 || ppmMQ6 > 500) {
+    digitalWrite(LED_PIN, HIGH);
+    Blynk.notify("Air quality deteriorating!");
+
+    // Send data to a cloud service for ML analysis
+    // Implement ML response handling here
+  } else {
+    digitalWrite(LED_PIN, LOW);
+  }
+}
